@@ -138,6 +138,7 @@ while True:
         if keys[pygame.K_s] and left_paddle.bottom < HEIGHT:
             left_paddle.y += 12
         # Q-learning AI for right paddle
+        prev_dist = abs(right_paddle.centery - ball.centery) if prev_state is not None else None
         state = get_state(ball, right_paddle, left_paddle)
         action = choose_action(Q, state)
         step(action, right_paddle)
@@ -152,10 +153,24 @@ while True:
         if ball.colliderect(left_paddle):
             ball.left = left_paddle.right
             ball_vx *= -1
+        if 'right_hit_coords' not in locals():
+            right_hit_coords = set()
+        if 'consecutive_hits' not in locals():
+            consecutive_hits = 0
         if ball.colliderect(right_paddle):
             ball.right = right_paddle.left
             ball_vx *= -1
-            reward = 1
+            hit_coord = (ball.centery, ball.centerx)
+            is_new = hit_coord not in right_hit_coords
+            if is_new:
+                right_hit_coords.add(hit_coord)
+                reward = 5
+            else:
+                reward = 1
+            consecutive_hits = min(consecutive_hits + 1, 5)
+            reward *= consecutive_hits
+        else:
+            consecutive_hits = 0
         # Ball out of bounds
         if ball.left <= 0:
             right_score += 1
@@ -163,8 +178,13 @@ while True:
             reset_ball(ball)
         elif ball.right >= WIDTH:
             left_score += 1
-            reward = -2
+            reward = -3
             reset_ball(ball)
+        # Distance-based reward: encourage paddle to shadow the ball
+        curr_dist = abs(right_paddle.centery - ball.centery)
+        if prev_dist is not None:
+            # Small positive reward for reducing distance, small penalty for increasing
+            reward += 0.024 * (prev_dist - curr_dist)
         # Q-learning update
         if prev_state is not None and prev_action is not None:
             Q[prev_state][prev_action] += alpha * (reward + gamma * np.max(Q[state]) - Q[prev_state][prev_action])
